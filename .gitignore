@@ -9,6 +9,7 @@ htmlcov/
 coverage.xml
 .idea/
 .venv/
+buzz/buzz_settings.ini
 
 # whisper_cpp
 libwhisper.*
