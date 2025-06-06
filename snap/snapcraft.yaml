@@ -1,0 +1,186 @@
+name: buzz
+base: core22
+version: git
+summary: Buzz, offline audio transcription and translation
+website: https://buzzcaptions.com
+source-code: https://github.com/chidiwilliams/buzz
+issues: https://github.com/chidiwilliams/buzz/issues
+description: |
+  Buzz transcribes and translates audio to text offline using OpenAI's Whisper.
+  Import audio and video files into Buzz and export them as TXT, SRT, or VTT files.
+  Buzz supports Whisper, Whisper.cpp, Faster Whisper, Whisper-compatible models
+  from the Hugging Face repository, and the OpenAI Whisper API.
+grade: stable
+confinement: strict
+license: MIT
+icon: buzz/assets/buzz.svg
+
+architectures:
+  - build-on: amd64
+
+parts:
+  desktop-qt5:
+    source: https://github.com/ubuntu/snapcraft-desktop-helpers.git
+    source-subdir: qt
+    plugin: make
+    make-parameters: [ "FLAVOR=qt5" ]
+    build-packages:
+      - build-essential
+      - qtbase5-dev
+      - dpkg-dev
+    stage-packages:
+      - libxkbcommon0
+      - fonts-ubuntu
+      - dmz-cursor-theme
+      - light-themes
+      - adwaita-icon-theme
+      - gnome-themes-standard
+      - shared-mime-info
+      - libqt5gui5
+      - libgdk-pixbuf2.0-0
+      - libqt5svg5 # for loading icon themes which are svg
+      - libglib2.0-0
+      - xdg-user-dirs
+    override-prime: |
+      craftctl default
+      glib-compile-schemas usr/share/glib-2.0/schemas
+
+  platform-modules:
+    plugin: nil
+    stage-packages:
+      - appmenu-gtk3-module
+      - libcanberra-gtk3-module
+
+  qt5-gtk-platform:
+    plugin: nil
+    stage-packages:
+      - qt5-gtk-platformtheme
+
+  alsa-pulseaudio:
+    plugin: dump
+    source: .
+    override-pull: |
+      mkdir etc -p
+      cat > etc/asound.conf <<EOF
+      pcm.!default {
+          type pulse
+          fallback "sysdefault"
+          hint {
+              show on
+              description "Default ALSA Output (currently PulseAudio Sound Server)"
+          }
+      }
+      ctl.!default {
+          type pulse
+          fallback "sysdefault"
+      }
+      EOF
+
+  buzz:
+    plugin: python
+    source: .
+    build-packages:
+      - portaudio19-dev
+    stage-packages:
+      # Audio
+      - ffmpeg
+      - libportaudio2
+      - libpulse0
+      - libasound2
+      - libasound2-plugins
+      - libasound2-plugins-extra
+      - libyaml-dev
+      - libegl1-mesa
+      - gstreamer1.0-plugins-good
+      - gstreamer1.0-plugins-base-apps
+      - gstreamer1.0-pulseaudio
+      - libgstreamer1.0-0
+      - libgstreamer-plugins-base1.0-0
+      - libgstreamer-plugins-good1.0-0
+      - qt6-declarative-dev
+      - qt6-multimedia-dev
+      # Display
+      - libxkbcommon-x11-0
+      - libxcb-icccm4
+      - libxcb-image0
+      - libxcb-keysyms1
+      - libxcb-randr0
+      - libxcb-render-util0
+      - libxcb-xinerama0
+      - libxcb-shape0
+      - libxcb-cursor0
+      # GPU
+      - libglu1-mesa
+    override-build: |
+      craftctl default
+      pip install poetry
+      make translation_mo
+      pip install .
+      pip uninstall -y ctranslate2
+      pip install https://github.com/raivisdejus/CTranslate2-no-execstack/releases/download/v4.2.1/ctranslate2-4.2.1-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+      python3 build.py
+      mkdir $CRAFT_PART_INSTALL/buzz
+      cp $CRAFT_PART_BUILD/buzz/whisper_cpp.py $CRAFT_PART_INSTALL/buzz/
+      cp $CRAFT_PART_BUILD/buzz/libwhisper.so $CRAFT_PART_INSTALL/buzz/
+    after: [ desktop-qt5 ]
+
+  desktop-file:
+    plugin: dump
+    source: .
+    organize:
+      buzz.desktop: usr/share/applications/buzz.desktop
+
+apps:
+  buzz:
+    command: bin/desktop-launch python3 -m buzz
+    desktop: usr/share/applications/buzz.desktop
+    environment:
+      PATH: $SNAP/usr/bin:$SNAP/bin:$PATH
+      LD_LIBRARY_PATH: $SNAP/lib/python3.10/site-packages/nvidia/cudnn/lib:$SNAP/lib/python3.10/site-packages/PyQt6:$SNAP/lib/python3.10/site-packages/PyQt6/Qt6/lib:$SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/lapack:$SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/blas:$SNAP:$LD_LIBRARY_PATH
+      PYTHONPATH: $SNAP/lib/python3.10/site-packages/PyQt6:$SNAP/lib/python3.10/site-packages/PyQt6/Qt6/lib:$SNAP/usr/lib/python3/dist-packages:$SNAP/usr/lib/python3.10/site-packages:$SNAP/usr/local/lib/python3.10/dist-packages:$SNAP/usr/lib/python3.10/dist-packages:$PYTHONPATH
+      # Fallback to XWayland if running in a Wayland session.
+      DISABLE_WAYLAND: 1
+      # Use GTK3 cursor theme, icon theme and open/save file dialogs.
+      QT_QPA_PLATFORMTHEME: gtk3
+      QT_MEDIA_BACKEND: gstreamer
+      ALSA_CONFIG_PATH: $SNAP/etc/asound.conf
+      XDG_CONFIG_DIRS: $SNAP/etc/xdg:$XDG_CONFIG_DIRS
+      XDG_DATA_DIRS: $SNAP/usr/share:$XDG_DATA_DIRS
+    plugs:
+      - x11
+      - unity7
+      - wayland
+      - home
+      - network
+      - network-bind
+      - desktop
+      - desktop-legacy
+      - gsettings
+      - opengl
+      - removable-media
+      - pulseaudio
+      - audio-playback
+      - audio-record
+      - password-manager-service
+
+plugs:
+  gtk-2-engines:
+    interface: content
+    target: $SNAP/lib/gtk-2.0
+    default-provider: gtk2-common-themes
+  gtk-3-themes:
+    interface: content
+    target: $SNAP/share/themes
+    default-provider: gtk-common-themes
+  icon-themes:
+    interface: content
+    target: $SNAP/share/icons
+    default-provider: gtk-common-themes
+  sound-themes:
+    interface: content
+    target: $SNAP/share/sounds
+    default-provider: gtk-common-themes
+
+layout:
+  /usr/lib/$SNAPCRAFT_ARCH_TRIPLET/alsa-lib:
+    bind: $SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/alsa-lib
