@@ -26,17 +26,18 @@ cd "this project directory"
 pyenv local 3.12.9
 
 # create the virtual enviroment
-poetry init
-poetry env info -p # get the path to the virtual environment
+poetry config virtualenvs.in-project true # configue the defualt .venv path to project's root directory
 
 # install dependencies on pyproject.toml (preferably using poetry.lock). 
-poetry install
+poetry install  #this command will create also create the virtual enviroment automatically
+poetry env info # check the virtual environment info
 
 # create .env file
 cp .env.sample .env
 
 # run buzz use virtual enviroment
 poetry  run python -m buzz
+
 
 ```
 
