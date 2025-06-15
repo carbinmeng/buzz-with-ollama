@@ -85,7 +85,11 @@ class WhisperFileTranscriber(FileTranscriber):
         )
 
         if self.current_process.exitcode != 0:
-            raise Exception("Unknown error")
+            if self.error_lines:
+                error_message = "Transcription process failed with the following errors:\n" + "\n".join(self.error_lines)
+                raise Exception(error_message)
+            else:
+                raise Exception(f"Transcription process failed with exit code {self.current_process.exitcode}.")
 
         return self.segments
 
@@ -93,6 +97,7 @@ class WhisperFileTranscriber(FileTranscriber):
     def transcribe_whisper(
         cls, stderr_conn: Connection, task: FileTranscriptionTask
     ) -> None:
+        print(f"transcribe_whisper_model_type: {task.transcription_options.model.model_type}")
         with pipe_stderr(stderr_conn):
             if task.transcription_options.model.model_type == ModelType.HUGGING_FACE:
                 sys.stderr.write("0%\n")
@@ -110,11 +115,13 @@ class WhisperFileTranscriber(FileTranscriber):
                 )
 
             segments_json = json.dumps(segments, ensure_ascii=True, default=vars)
+            logging.info(f"final_segments: {json.dumps(segments, ensure_ascii=False, default=vars)}")
             sys.stderr.write(f"segments = {segments_json}\n")
             sys.stderr.write(WhisperFileTranscriber.READ_LINE_THREAD_STOP_TOKEN + "\n")
 
     @classmethod
     def transcribe_hugging_face(cls, task: FileTranscriptionTask) -> List[Segment]:
+        print(f"transcribe_hugging_face.model_path: {task.model_path}")
         model = TransformersWhisper(task.model_path)
         language = (
             task.transcription_options.language
@@ -139,6 +146,7 @@ class WhisperFileTranscriber(FileTranscriber):
 
     @classmethod
     def transcribe_faster_whisper(cls, task: FileTranscriptionTask) -> List[Segment]:
+        print(f"transcribe_faster_whisper.model_path: {task.model_path}")
         if task.transcription_options.model.whisper_model_size == WhisperModelSize.CUSTOM:
             model_size_or_path = task.transcription_options.model.hugging_face_model_id
         elif task.transcription_options.model.whisper_model_size == WhisperModelSize.LARGEV3TURBO:
@@ -202,9 +210,9 @@ class WhisperFileTranscriber(FileTranscriber):
 
     @classmethod
     def transcribe_openai_whisper(cls, task: FileTranscriptionTask) -> List[Segment]:
+        logging.info(f"transcribe_openai_whisper.model_path: {task.model_path}")
         device = "cuda" if torch.cuda.is_available() else "cpu"
         model = whisper.load_model(task.model_path, device=device)
-
         if task.transcription_options.word_level_timings:
             stable_whisper.modify_model(model)
             result: WhisperResult = model.transcribe(
@@ -224,28 +232,27 @@ class WhisperFileTranscriber(FileTranscriber):
                 for segment in result.segments
                 for word in segment.words
             ]
-
-        result: dict = model.transcribe(
+        stable_whisper.modify_model(model)
+        result: WhisperResult = model.transcribe(
             # audio=task.file_path,
             audio=whisper_audio.load_audio(task.file_path),
             language=task.transcription_options.language,
             task=task.transcription_options.task.value,
             temperature=task.transcription_options.temperature,
             initial_prompt=task.transcription_options.initial_prompt,
-            verbose=False,
+            word_timestamps=False,
+            verbose=True
         )
-        segments = result.get("segments")
+        segments = result.segments
         return [
             Segment(
-                start=int(segment.get("start") * 1000),
-                end=int(segment.get("end") * 1000),
-                text=segment.get("text"),
+                start=int(segment.start * 1000),
+                end=int(segment.end * 1000),
+                text=segment.text,
                 translation=""
             )
             for segment in segments
         ]
-
-
 
     def stop(self):
         self.stopped = True
@@ -282,4 +289,5 @@ class WhisperFileTranscriber(FileTranscriber):
                         self.progress.emit((progress, 100))
                 except ValueError:
                     logging.debug("whisper (stderr): %s", line)
+                    self.error_lines.append(line)
                     continue

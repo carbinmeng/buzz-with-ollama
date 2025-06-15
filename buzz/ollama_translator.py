@@ -151,7 +151,7 @@ class OllamaTranslator(QObject):
               # Trim history if it gets too long (keep most recent exchanges)
               if len(self.message_history) > self.max_history_length * 2:  # *2 because each exchange is 2 messages
                 self.message_history = self.message_history[-self.max_history_length * 2:]
-                logging.debug(f"Trimmed conversation history to {len(self.message_history)} messages")
+                #logging.debug(f"Trimmed conversation history to {len(self.message_history)} messages")
             else:
               logging.error(f"Unexpected response format: {result}")
               next_translation = transcript  # Use original text as fallback

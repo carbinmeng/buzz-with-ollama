@@ -181,4 +181,8 @@ class TranscriptionSegmentsEditorWidget(QTableView):
         return self.model().record(index.row())
 
     def segments(self) -> list[QSqlRecord]:
+        model = self.model()
+        while model.canFetchMore():
+            model.fetchMore()
+        print(f"model().rowCount() = {model.rowCount()}")
         return [self.model().record(i) for i in range(self.model().rowCount())]

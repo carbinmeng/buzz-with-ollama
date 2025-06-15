@@ -143,7 +143,7 @@ class Translator(QObject):
             self.ollama_translator.on_transcription_options_changed(transcription_options)
 
     def enqueue(self, transcript: str, transcript_id: Optional[int] = None):
-        logging.debug(f"Enqueuing transcript for translation: {transcript[:50]}...")
+        # logging.debug(f"Enqueuing transcript for translation: {transcript[:50]}...")
         
         # If using Ollama, delegate to the Ollama translator
         if self.translation_provider == "OLLAMA" and self.ollama_translator:

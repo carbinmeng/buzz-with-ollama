@@ -303,6 +303,7 @@ class TranscriptionViewerWidget(QWidget):
                 return
 
         segments = self.table_widget.segments()
+        logging.debug(f"on_translate_button_clicked: Enqueuing {len(segments)} segments for translation")
         for segment in segments:
             self.translator.enqueue(segment.value("text"), segment.value("id"))
 
